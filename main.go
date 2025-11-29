@@ -172,13 +172,10 @@ var upgrader = websocket.Upgrader{
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// 认证
-	authToken := r.URL.Query().Get("auth_token")
-	userID, err := validateJWT(authToken)
-	if err != nil {
-		log.Printf("WebSocket authentication failed: %v", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+	// WebSocket 连接不需要鉴权，使用 query 参数中的 user_id 或默认 "default"
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = "default"
 	}
 
 	// 升级连接
