@@ -7,19 +7,12 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-)
-
-// --- Auth Config ---
-var (
-	// 格式: "user1:token1,user2:token2" 或单个 "token" (默认用户为 "default")
-	authTokens = make(map[string]string) // token -> userID
 )
 
 // --- Constants ---
@@ -172,10 +165,13 @@ var upgrader = websocket.Upgrader{
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// WebSocket 连接不需要鉴权，使用 query 参数中的 user_id 或默认 "default"
-	userID := r.URL.Query().Get("user_id")
-	if userID == "" {
-		userID = "default"
+	// 认证
+	authToken := r.URL.Query().Get("auth_token")
+	userID, err := validateJWT(authToken)
+	if err != nil {
+		log.Printf("WebSocket authentication failed: %v", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	// 升级连接
@@ -478,70 +474,40 @@ func writeBody(w http.ResponseWriter, payload map[string]interface{}) {
 	}
 }
 
-// validateJWT 验证token并返回userID
+// validateJWT 模拟JWT验证并返回userID
 func validateJWT(token string) (string, error) {
 	if token == "" {
 		return "", errors.New("missing auth_token")
 	}
-	if userID, ok := authTokens[token]; ok {
-		return userID, nil
+	// 实际应用中，这里需要使用JWT库（如golang-jwt/jwt）来验证签名和过期时间
+	// 这里我们简单地将token当作userID
+	if token == "valid-token-user-1" {
+		return "user-1", nil
 	}
+	//if token == "valid-token-user-2" {
+	//	return "user-2", nil
+	//}
 	return "", errors.New("invalid token")
 }
 
-// authenticateHTTPRequest HTTP代理请求的认证
+// authenticateHTTPRequest 模拟HTTP代理请求的认证
 func authenticateHTTPRequest(r *http.Request) (string, error) {
-	// 支持 Authorization: Bearer <token> 或 x-auth-token 头
-	token := ""
-	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
-		token = strings.TrimPrefix(auth, "Bearer ")
-	} else if t := r.Header.Get("x-auth-token"); t != "" {
-		token = t
-	}
-	if token == "" {
-		return "", errors.New("missing auth token")
-	}
-	if userID, ok := authTokens[token]; ok {
-		return userID, nil
-	}
-	return "", errors.New("invalid token")
-}
-
-// initAuth 从环境变量初始化认证配置
-func initAuth() {
-	// AUTH_TOKENS 格式: "user1:token1,user2:token2" 或单个 "token" (用户为 "default")
-	tokensEnv := os.Getenv("AUTH_TOKENS")
-	if tokensEnv == "" {
-		log.Println("Warning: AUTH_TOKENS not set, authentication will reject all requests")
-		return
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("missing Authorization header")
 	}
 
-	pairs := strings.Split(tokensEnv, ",")
-	for _, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		if idx := strings.Index(pair, ":"); idx > 0 {
-			userID := strings.TrimSpace(pair[:idx])
-			token := strings.TrimSpace(pair[idx+1:])
-			if token != "" {
-				authTokens[token] = userID
-			}
-		} else {
-			// 单个token，使用默认用户
-			authTokens[pair] = "default"
-		}
+	const bearerPrefix = "Bearer "
+	if !strings.HasPrefix(authHeader, bearerPrefix) {
+		return "", errors.New("invalid Authorization header")
 	}
-	log.Printf("Loaded %d auth token(s)", len(authTokens))
+
+	return validateJWT(strings.TrimSpace(authHeader[len(bearerPrefix):]))
 }
 
 // --- 主函数 ---
 
 func main() {
-	// 初始化认证
-	initAuth()
-
 	// WebSocket 路由
 	http.HandleFunc(wsPath, handleWebSocket)
 
