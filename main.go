@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -492,17 +491,36 @@ func validateJWT(token string) (string, error) {
 
 // authenticateHTTPRequest 模拟HTTP代理请求的认证
 func authenticateHTTPRequest(r *http.Request) (string, error) {
+	// 实际应用中，可能检查Authorization头或其他API Key
+	//apiKey := r.Header.Get("x-goog-api-key")
+	//if apiKey == "secret-key-for-user-1" {
+	//	return "user-1", nil
+	//}
+	//if apiKey == "secret-key-for-user-2" {
+	//	return "user-2", nil
+	//}
+	//// 也可以从请求路径中获取 /proxy/user-1/...
+	//return "", errors.New("invalid API key")
+
+
+	apiKey := r.Header.Get("x-goog-api-key")
+
+	if (apiKey == "secret-key-for-user-1") {
+		return "user-1", nil
+	}
+
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		return "", errors.New("missing Authorization header")
 	}
 
-	const bearerPrefix = "Bearer "
-	if !strings.HasPrefix(authHeader, bearerPrefix) {
-		return "", errors.New("invalid Authorization header")
+	if (authHeader == "Bearer secret-key-for-user-1") {
+		return "user-1", nil
 	}
 
-	return validateJWT(strings.TrimSpace(authHeader[len(bearerPrefix):]))
+	return "", errors.New("invalid API key")
+
+	// return "user-1", nil
 }
 
 // --- 主函数 ---
